@@ -62,17 +62,14 @@ class Button:
         if self.background_texture_id:
             TextureManager().draw_texture(
                 name=self.background_texture_id,
-                position=(self.rect.top, self.rect.left),
+                position=(self.rect.centerx, self.rect.centery),
                 scale=(self.rect.weight, self.rect.height),
             )
 
         TextManager().print(
             window=window,
             text=self.title,
-            position=(
-                self.rect.left + self.rect.width // 2,
-                self.rect.top + self.rect.height // 2
-            ),
+            position=(self.rect.centerx, self.rect.centery),
             color=self.font_color,
             font_size=self.font_size,
         )

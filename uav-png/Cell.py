@@ -53,7 +53,10 @@ class Cell:
             Game().getWindow(),
             str(self.value),
             (
-                self.rect.left + self.rect.width // 2,
-                self.rect.top + self.rect.height // 2,
+                self.rect.centerx,
+                self.rect.centery,
             ),
         )
+
+    def clean(self):
+        pass

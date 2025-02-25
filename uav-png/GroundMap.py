@@ -1,16 +1,18 @@
 from .Cell import Cell, CellState
 from pygame import Rect
 from sklearn.cluster import DBSCAN, KMeans
+from .Cluster import Cluster
 import numpy as np
+import threading
 
 
-class Map:
+class GroundMap:
     def __init__(
         self,
         AoI,
         width: float,
         height: float,
-        wind_direction: (float, float),
+        wind_direction: [float, float],
         wind_strength: float,
     ):
         self.cells = {}
@@ -22,21 +24,13 @@ class Map:
         self.updating_cluster = False
         from .Game import Game
 
-        # Calculate the dynamic cell size based on the window size and map size
-        self.cell_size_x = (
-            Game().getWindow().width // self.width
-        )  # Cell size based on map width
-        self.cell_size_y = (
-            Game().getWindow().height // self.height
-        )  # Cell size based on map height
+        self.cell_size = min(
+            Game().getWindow().width // self.width,
+            Game().getWindow().height // self.height,
+        )
 
-        # Choose the smaller of the two to ensure cells fit in both directions
-        self.cell_size = min(self.cell_size_x, self.cell_size_y)
-
-        # Create grid of cells that fit the screen
         for x in range(0, self.width):
             for y in range(0, self.height):
-                # Calculate the rectangle for each cell
                 rect = Rect(
                     x * self.cell_size,
                     y * self.cell_size,
@@ -44,70 +38,86 @@ class Map:
                     self.cell_size,
                 )
 
-                # Determine cell value and state based on AoI (Area of Interest)
                 cell_value = 0
                 cell_state = CellState.NO_INTEREST
                 if (x, y) in AoI:
                     cell_value = 1
                     cell_state = CellState.NOT_SCANNED
 
-                # Create and store the cell
                 cell = Cell(rect, cell_value, cell_state)
                 self.cells[(x, y)] = cell
 
-        self.clusters = self.apply_dbscan(self.AoI)
+        self.clusters = []
 
     def update_cluster(self, method="dbscan", n_clusters=3):
         if not self.updating_cluster:
-            newAoI = [cell for cell in self.AoI if self.cells[cell].value > 0]
-            if not newAoI:
-                return
+            self.updating_cluster = True
+            thread = threading.Thread(
+                target=self._run_clustering, args=(method, n_clusters), daemon=True
+            )
+            thread.start()
 
-            if method == "dbscan":
-                self.clusters = self.apply_dbscan(newAoI)
-            elif method == "kmeans":
-                self.clusters = self.apply_kmeans(newAoI, n_clusters)
+    def _run_clustering(self, method, n_clusters):
+        """Performs clustering in a separate thread."""
+        remainAoI = [cell for cell in self.AoI if self.cells[cell].value > 0]
+        if not remainAoI:
             self.updating_cluster = False
+            return
 
-    def apply_dbscan(self, AoI, eps=1.0, min_samples=1):
+        if method == "dbscan":
+            clusters = self.apply_dbscan(remainAoI)
+        elif method == "kmeans":
+            clusters = self.apply_kmeans(remainAoI, n_clusters)
+        else:
+            self.updating_cluster = False
+            return
+
+        # Updating clusters safely after computation
+        self.clusters = clusters
+        self.updating_cluster = False
+
+    def apply_dbscan(self, AoI, eps=1.0, min_samples=1) -> list[Cluster]:
         coordinates = np.array([list(cell) for cell in AoI])
         dbscan = DBSCAN(eps=eps, min_samples=min_samples)
         dbscan.fit(coordinates)
-        clusters = {}
+        clusters = []
         for label in set(dbscan.labels_):
             if label == -1:
                 continue
             cluster_points = coordinates[dbscan.labels_ == label]
-            centroid = np.mean(cluster_points, axis=0)
+            centroid = np.mean(cluster_points, axis=0) * self.cell_size
             distances = np.linalg.norm(cluster_points - centroid, axis=1)
-            radius = np.max(distances)
-            clusters[label] = {
-                "centroid": centroid * self.cell_size,
-                "points": cluster_points,
-                "radius": radius * self.cell_size,
-                "priority_score": len(cluster_points),
-            }
+            radius = np.max(distances) * self.cell_size
+
+            clusters.append(
+                Cluster(
+                    centroid=centroid,
+                    radius=radius,
+                    important_score=len(cluster_points),
+                )
+            )
         return clusters
 
-    def apply_kmeans(self, AoI, n_clusters=3):
+    def apply_kmeans(self, AoI, n_clusters=3) -> list[Cluster]:
         coordinates = np.array([list(cell) for cell in AoI])
         if len(coordinates) < n_clusters:
-            n_clusters = len(coordinates)  # Adjust to avoid errors
+            n_clusters = len(coordinates)
         kmeans = KMeans(n_clusters=n_clusters, n_init=10)
         labels = kmeans.fit_predict(coordinates)
         clusters = {}
         for label in set(labels):
             cluster_points = coordinates[labels == label]
-            centroid = np.mean(cluster_points, axis=0)
+            centroid = np.mean(cluster_points, axis=0) * self.cell_size
             distances = np.linalg.norm(cluster_points - centroid, axis=1)
-            radius = np.max(distances)
-            EXTEND_RADIUS = self.cell_size // 2
-            clusters[label] = {
-                "centroid": centroid * self.cell_size,
-                "points": cluster_points,
-                "radius": radius * self.cell_size + EXTEND_RADIUS,
-                "priority_score": len(cluster_points),
-            }
+            radius = np.max(distances) * self.cell_size
+
+            clusters.append(
+                Cluster(
+                    centroid=centroid,
+                    radius=radius,
+                    important_score=len(cluster_points),
+                )
+            )
         return clusters
 
     def update(self):
@@ -115,42 +125,23 @@ class Map:
         for cell in self.cells.values():
             cell.update()
 
+        for cluster in self.clusters:
+            cluster.update()
+
     def handle_events(self):
         """Handle events for all cells."""
         for cell in self.cells.values():
             cell.handle_events()
 
+        for cluster in self.clusters:
+            cluster.handle_events()
+
     def draw(self):
-        """Draw all cells and clusters."""
         for cell in self.cells.values():
             cell.draw()
 
-        from .Game import Game
-        from .engine.TextManager import TextManager
-
-        # Draw clusters (centroids and radii)
-        for cluster in self.clusters.values():
-            centroid_x, centroid_y = cluster["centroid"]
-
-            # Draw centroid as a small filled circle
-            Game().getWindow().draw_circle(centroid_x, centroid_y, 20, "red")
-
-            # Draw the cluster radius as a circle with a radius equal to the cluster's radius
-            cluster_radius = cluster["radius"]
-            Game().getWindow().draw_circle(
-                centroid_x, centroid_y, cluster_radius, "red", 2
-            )
-
-            TextManager().print(
-                window=Game().getWindow(),
-                text=str(cluster["priority_score"]),
-                position=(
-                    centroid_x,
-                    centroid_y,
-                ),
-                color="black",
-                font_size=30,
-            )
+        for cluster in self.clusters:
+            cluster.draw()
 
     def update_state(
         self,
@@ -174,12 +165,10 @@ class Map:
         self.cells.clear()  # Clear existing cells
 
         # Recalculate cell size based on the window size
-        self.cell_size_x = (
-            self.window_width // self.width
-        )  # New cell size based on map width
-        self.cell_size_y = (
-            self.window_height // self.height
-        )  # New cell size based on map height
+        self.cell_size_x = self.window_width // self.width
+        # New cell size based on map width
+        self.cell_size_y = self.window_height // self.height
+        # New cell size based on map height
 
         # Choose the smaller of the two to ensure cells fit in both directions
         self.cell_size = min(self.cell_size_x, self.cell_size_y)
@@ -204,3 +193,7 @@ class Map:
                 # Create and store the cell
                 cell = Cell(rect, cell_value, cell_state)
                 self.cells[(x, y)] = cell
+
+    def clean(self):
+        self.cells.clear()
+        self.clusters.clear()

@@ -4,20 +4,18 @@ from .engine.GameStateManager import GameStateManager
 from .engine.InputManager import InputManager
 from .Uav import Uav
 from .SwarmManager import SwarmManager
-from .Map import Map
+from .GroundMap import GroundMap
 
 
 class DemoState(GameState):
     def __init__(self):
         self.swarm_manager = SwarmManager()
-        # Create UAVs (example values)
         uav1 = Uav(
             remain_energy=100,
             min_speed=1,
             max_speed=10,
             buffer_data=50,
-            x=150,
-            y=300,
+            pos=[150.0, 300.0],
             size=30,
             connection_range=100,
         )
@@ -26,8 +24,7 @@ class DemoState(GameState):
             min_speed=1,
             max_speed=10,
             buffer_data=50,
-            x=800,
-            y=210,
+            pos=[800.0, 210.0],
             size=30,
             connection_range=50,
         )
@@ -36,8 +33,7 @@ class DemoState(GameState):
             min_speed=1,
             max_speed=10,
             buffer_data=50,
-            x=300,
-            y=300,
+            pos=[300.0, 300.0],
             size=30,
             connection_range=70,
         )
@@ -46,8 +42,7 @@ class DemoState(GameState):
             min_speed=1,
             max_speed=10,
             buffer_data=50,
-            x=700,
-            y=200,
+            pos=[700.0, 200.0],
             size=30,
             connection_range=100,
         )
@@ -56,18 +51,17 @@ class DemoState(GameState):
             min_speed=1,
             max_speed=10,
             buffer_data=50,
-            x=500,
-            y=900,
+            pos=[500.0, 900.0],
             size=30,
             connection_range=100,
         )
 
-        # Add UAVs to the SwarmManager
+
         self.swarm_manager.add_uav(uav1)
         self.swarm_manager.add_uav(uav2)
         self.swarm_manager.add_uav(uav3)
 
-        self.ground_map = Map(
+        self.ground_map = GroundMap(
             AoI=[
                 (20, 8),
                 (20, 9),
@@ -78,49 +72,12 @@ class DemoState(GameState):
                 (20, 14),
                 (20, 15),
                 (20, 16),
-
-                (21, 8),
-                (21, 9),
-                (21, 10),
-                (21, 11),
-                (21, 12),
-                (21, 13),
-                (21, 14),
-                (21, 15),
-                (21, 16),
-
-                (22, 8),
-                (22, 9),
-                (22, 10),
                 (22, 11),
                 (22, 12),
                 (22, 13),
                 (22, 14),
                 (22, 15),
                 (22, 16),
-
-                (23, 8),
-                (23, 9),
-                (23, 10),
-                (23, 11),
-                (23, 12),
-                (23, 13),
-                (23, 14),
-                (23, 15),
-                (23, 16),
-
-                (24, 8),
-                (24, 9),
-                (24, 10),
-                (24, 11),
-                (24, 12),
-                (24, 13),
-                (24, 14),
-                (24, 15),
-                (24, 16),
-
-                (25, 8),
-                (25, 9),
                 (25, 10),
                 (25, 11),
                 (25, 12),
@@ -128,7 +85,6 @@ class DemoState(GameState):
                 (25, 14),
                 (25, 15),
                 (25, 16),
-
                 (26, 8),
                 (26, 9),
                 (26, 10),
@@ -141,7 +97,7 @@ class DemoState(GameState):
             ],
             width=30,
             height=20,
-            wind_direction=(0.5, 0.5),
+            wind_direction=[0.5, 0.5],
             wind_strength=10,
         )
 
@@ -159,7 +115,12 @@ class DemoState(GameState):
         self.swarm_manager.draw()
 
     def clean(self):
-        pass
+        """Clean up resources and reset state."""
+        self.swarm_manager.clean()  # Assuming a clear method exists
+        self.ground_map.clean()  # Assuming a clean method exists
+
+        self.swarm_manager = None
+        self.ground_map = None
 
     def _handle_game_state(self):
         if InputManager().is_key_down(pygame.K_ESCAPE):

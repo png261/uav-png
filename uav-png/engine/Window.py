@@ -1,5 +1,6 @@
 import pygame
 from pygame import Rect
+import numpy as np
 
 
 class Window:
@@ -84,12 +85,11 @@ class Window:
                 border_radius=int(radius * self.zoom_factor),
             )
 
-    def draw_circle(self, x, y, radius, color, width=0):
+    def draw_circle(self, centroid: (float, float), radius, color, width=0):
         """Draw a circle at the zoomed coordinates."""
-        x = int(x * self.zoom_factor)
-        y = int(y * self.zoom_factor)
+        centroid = (np.array(centroid) * self.zoom_factor).astype(int)
         radius = int(radius * self.zoom_factor)
-        pygame.draw.circle(self.screen, color, (x, y), radius, width=width)
+        pygame.draw.circle(self.screen, color, centroid, radius, width=width)
 
     def fill(self, color: pygame.Color):
         """Fill the entire screen with the zoomed background color."""
